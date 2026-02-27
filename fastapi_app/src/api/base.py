@@ -99,7 +99,7 @@ async def delete_post(post_id: int) -> dict:
         status_code=status.HTTP_404_NOT_FOUND,
     )
 
-"""@router.post("/posts/{post_id}/comments", status_code=status.HTTP_201_CREATED)
+@router.post("/posts/{post_id}/comments", status_code=status.HTTP_201_CREATED)
 async def create_comment(post_id: int, comment: CommentCreate):
 
     global comment_counter
@@ -184,4 +184,4 @@ async def delete_comment(comment_id: int, author_id: int = None):
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
         detail=f"Комментарий с id {comment_id} не найден"
-    )"""
+    )
