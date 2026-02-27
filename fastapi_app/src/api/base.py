@@ -101,10 +101,7 @@ async def delete_post(post_id: int) -> dict:
 
 """@router.post("/posts/{post_id}/comments", status_code=status.HTTP_201_CREATED)
 async def create_comment(post_id: int, comment: CommentCreate):
-    """
-    Создать комментарий к посту.
-    Ожидается JSON с полями text, author_id (post_id берётся из URL).
-    """
+
     global comment_counter
 
     # Проверяем, существует ли пост
@@ -137,10 +134,7 @@ async def create_comment(post_id: int, comment: CommentCreate):
 
 @router.get("/posts/{post_id}/comments", status_code=status.HTTP_200_OK)
 async def get_post_comments(post_id: int, skip: int = 0, limit: int = 10):
-    """
-    Получить список комментариев к конкретному посту с пагинацией.
-    Параметры skip и limit передаются в query-строке (по умолчанию 0 и 10).
-    """
+
     # Проверяем существование поста (необязательно, но для целостности)
     post_exists = any(p["id"] == post_id for p in posts_db)
     if not post_exists:
@@ -167,10 +161,7 @@ async def get_post_comments(post_id: int, skip: int = 0, limit: int = 10):
 
 @router.delete("/comments/{comment_id}", status_code=status.HTTP_200_OK)
 async def delete_comment(comment_id: int, author_id: int = None):
-    """
-    Удалить комментарий по его ID.
-    Опционально можно передать author_id для проверки прав (в реальном приложении брать из токена).
-    """
+
     global comments_db
 
     # Ищем комментарий
