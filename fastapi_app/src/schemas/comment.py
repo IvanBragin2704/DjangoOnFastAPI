@@ -17,12 +17,3 @@ class CommentCreate(CommentBase):
 
 class CommentUpdate(BaseModel):
     text: str | None = None
-
-
-class CommentResponse(CommentBase):
-    id: int
-    created_at: datetime
-    post_id: int
-    author: User
-
-    model_config = ConfigDict(from_attributes=True)
