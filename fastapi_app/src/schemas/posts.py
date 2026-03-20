@@ -1,38 +1,51 @@
 from pydantic import BaseModel, Field, ConfigDict
 from datetime import datetime
+from src.schemas.users import User
+from src.schemas.categories import Category
+from src.schemas.locations import Location
 
 
 class PostBase(BaseModel):
-    """Базовая модель поста - общие поля"""
-    title: str = Field(..., min_length=3, max_length=256)
-    text: str = Field(...)
-    pub_date: datetime = Field(...)
-    is_published: bool = Field(True)
-    # Внешние ключи - часть сущности
-
-    category_id: int | None = Field(None, gt=0)
-    location_id: int | None = Field(None, gt=0)
-    image: str | None = Field(None, min_length=3 ,max_length=100)
+    """Базовая модель поста"""
+    title: str = Field(max_length=256)
+    text: str
+    pub_date: datetime
+    author_id: int
+    category_id: int | None = None
+    location_id: int | None = None
+    image: str | None = None
+    is_published: bool = True
 
 
 class PostCreate(PostBase):
-    """Для создания поста - все поля базового класса"""
+    """Для создания поста"""
+    pass
+
 
 class PostUpdate(BaseModel):
-    """Для обновления поста - все поля опциональны"""
-    title: str | None = Field(None, min_length=3, max_length=256)
-    text: str | None = Field(None)
-    pub_date: datetime | None = Field(None)
-    is_published: bool | None = Field(None)
-    category_id: int | None = Field(None, gt=0)
-    location_id: int | None = Field(None, gt=0)
-    image: str | None = Field(None, min_length=3, max_length=100)
+    """Для обновления поста - все поля необязательные"""
+    title: str | None = Field(None, max_length=256)
+    text: str | None = None
+    pub_date: datetime | None = None
+    author_id: int | None = None
+    category_id: int | None = None
+    location_id: int | None = None
+    image: str | None = None
+    is_published: bool | None = None
 
 
 class Post(PostBase):
     """Для чтения поста из БД"""
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     created_at: datetime
-    author_id: int
+    # Можно добавить расширенные поля с данными связанных объектов
+    author: User | None = None
+    category: Category | None = None
+    location: Location | None = None
 
-    model_config = ConfigDict(from_attributes=True)
+
+class PostDetail(Post):
+    """Детальная информация о посте со всеми связями"""
+    pass

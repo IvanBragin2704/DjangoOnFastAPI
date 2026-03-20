@@ -1,2 +1,0 @@
-# FastApi_Homework
-

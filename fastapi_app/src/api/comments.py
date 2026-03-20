@@ -1,36 +1,47 @@
-from fastapi import APIRouter, status
-from fastapi_app.src.schemas.comments import Comment, CommentCreate, CommentUpdate
-from fastapi_app.src.domain.comments_use_cases.create_comment import CreateCommentUseCase
-from fastapi_app.src.domain.comments_use_cases.get_comment import GetCommentUseCase
-from fastapi_app.src.domain.comments_use_cases.update_comment import UpdateCommentUseCase
-from fastapi_app.src.domain.comments_use_cases.delete_comment import DeleteCommentUseCase
+from fastapi import APIRouter, Depends, status
+from src.schemas.comments import Comment, CommentCreate, CommentUpdate
+from src.domain.comments.use_cases.get_comment_by_id import GetCommentByIdUseCase
+from src.domain.comments.use_cases.create_comment import CreateCommentUseCase
+from src.domain.comments.use_cases.update_comment import UpdateCommentUseCase
+from src.domain.comments.use_cases.delete_comment import DeleteCommentUseCase
 
 router = APIRouter(prefix="/comments", tags=["Comments"])
 
 
-@router.post("/", response_model=Comment, status_code=status.HTTP_201_CREATED)
-async def create_comment(comment_data: CommentCreate) -> Comment:
-    """Создать новый комментарий"""
-    use_case = CreateCommentUseCase()
-    return await use_case.execute(comment_data=comment_data)
 
 
 @router.get("/{comment_id}", response_model=Comment, status_code=status.HTTP_200_OK)
-async def get_comment(comment_id: int) -> Comment:
+async def get_comment_by_id(
+    comment_id: int,
+    use_case: GetCommentByIdUseCase = Depends()
+) -> Comment:
     """Получить комментарий по ID"""
-    use_case = GetCommentUseCase()
     return await use_case.execute(comment_id=comment_id)
 
 
+@router.post("/", response_model=Comment, status_code=status.HTTP_201_CREATED)
+async def create_comment(
+    comment_data: CommentCreate,
+    use_case: CreateCommentUseCase = Depends()
+) -> Comment:
+    """Создать новый комментарий"""
+    return await use_case.execute(comment_data=comment_data)
+
+
 @router.put("/{comment_id}", response_model=Comment, status_code=status.HTTP_200_OK)
-async def update_comment(comment_id: int, comment_data: CommentUpdate) -> Comment:
+async def update_comment(
+    comment_id: int,
+    comment_data: CommentUpdate,
+    use_case: UpdateCommentUseCase = Depends()
+) -> Comment:
     """Обновить комментарий"""
-    use_case = UpdateCommentUseCase()
     return await use_case.execute(comment_id=comment_id, comment_data=comment_data)
 
 
 @router.delete("/{comment_id}", status_code=status.HTTP_200_OK)
-async def delete_comment(comment_id: int) -> dict:
+async def delete_comment(
+    comment_id: int,
+    use_case: DeleteCommentUseCase = Depends()
+) -> dict:
     """Удалить комментарий"""
-    use_case = DeleteCommentUseCase()
     return await use_case.execute(comment_id=comment_id)

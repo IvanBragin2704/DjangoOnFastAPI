@@ -4,23 +4,24 @@ from datetime import datetime
 
 class CommentBase(BaseModel):
     """Базовая модель комментария"""
-    text: str = Field(..., min_length=1, max_length=1000)
-    post_id: int = Field(..., gt=0)
-    author_id: int = Field(..., gt=0)  # gt=0 <=> больше нуля
+    text: str = Field(min_length=1, description="Текст комментария")
+    post_id: int = Field(description="ID поста, к которому относится комментарий")
+    author_id: int = Field(description="ID автора комментария")
 
 
 class CommentCreate(CommentBase):
-    """Для создания комментария - все наследуется от базового класса"""
+    """Для создания комментария"""
+    pass
 
 
 class CommentUpdate(BaseModel):
-    """Для обновления комментария"""
-    text: str | None = Field(None, min_length=1, max_length=1000)
+    """Для обновления комментария - только текст можно менять"""
+    text: str = Field(min_length=1, description="Новый текст комментария")
 
 
 class Comment(CommentBase):
     """Для чтения комментария из БД"""
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     created_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)

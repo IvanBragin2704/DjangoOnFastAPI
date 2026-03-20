@@ -1,25 +1,31 @@
 from contextlib import contextmanager
+
+from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.ext.declarative import declarative_base
+
 
 class Database:
     def __init__(self):
-        self._db_url = "sqlite:////D:/PyCharm 2025.3.2.1/projects/DjangoOnFastapi/DjangoOnFastAPI/sqlite.db"
+        #self._db_url = "sqlite:///D:/GitWork/FastAPI-task1/db.sqlite3"
+        self._db_url = "sqlite:///D:/GitWork/FastAPI-task1/taskdb.sqlite3"
         self._engine = create_engine(self._db_url)
-        self._session_factory = sessionmaker(bind=self._engine)
 
     @contextmanager
-    def session(self) -> Session:
-        session = self._session_factory()
+    def session(self):
+        connection = self._engine.connect()
+
+        Session = sessionmaker(bind=self._engine)
+        session = Session()
+
         try:
             yield session
             session.commit()
+            connection.close()
         except Exception:
             session.rollback()
             raise
-        finally:
-            session.close()
+
 
 database = Database()
 Base = declarative_base()
