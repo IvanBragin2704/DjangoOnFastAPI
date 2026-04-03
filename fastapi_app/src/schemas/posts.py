@@ -1,51 +1,51 @@
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from datetime import datetime
-from src.schemas.users import User
-from src.schemas.categories import Category
-from src.schemas.locations import Location
-
+from typing import Optional
+import re
 
 class PostBase(BaseModel):
-    """Базовая модель поста"""
-    title: str = Field(max_length=256)
-    text: str
-    pub_date: datetime
-    author_id: int
-    category_id: int | None = None
-    location_id: int | None = None
-    image: str | None = None
+    title: str = Field(..., min_length=1, max_length=256)
+    text: str = Field(..., min_length=1)
     is_published: bool = True
+    author_id: int
+    category_id: Optional[int] = None
+    location_id: Optional[int] = None
+    image: Optional[str] = None
 
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("Заголовок не может состоять только из пробелов")
+        # Разрешаем буквы (в т.ч. кириллицу), цифры, пробелы и базовую пунктуацию
+        return v
 
 class PostCreate(PostBase):
-    """Для создания поста"""
-    pass
-
+    pub_date: datetime
 
 class PostUpdate(BaseModel):
-    """Для обновления поста - все поля необязательные"""
-    title: str | None = Field(None, max_length=256)
-    text: str | None = None
-    pub_date: datetime | None = None
-    author_id: int | None = None
-    category_id: int | None = None
-    location_id: int | None = None
-    image: str | None = None
-    is_published: bool | None = None
+    title: Optional[str] = Field(default=None, min_length=1, max_length=256)
+    text: Optional[str] = Field(default=None, min_length=1)
+    pub_date: Optional[datetime] = None
+    is_published: Optional[bool] = None
+    category_id: Optional[int] = None
+    location_id: Optional[int] = None
+    image: Optional[str] = None
 
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        if not v.strip():
+            raise ValueError("Заголовок не может состоять только из пробелов")
+        return v
 
-class Post(PostBase):
-    """Для чтения поста из БД"""
+class PostResponse(PostBase):
     model_config = ConfigDict(from_attributes=True)
-
     id: int
     created_at: datetime
-    # Можно добавить расширенные поля с данными связанных объектов
-    author: User | None = None
-    category: Category | None = None
-    location: Location | None = None
 
-
-class PostDetail(Post):
-    """Детальная информация о посте со всеми связями"""
-    pass
+class PostListResponse(BaseModel):
+    items: list[PostResponse]
+    total: int

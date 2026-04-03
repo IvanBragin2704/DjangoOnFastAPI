@@ -1,33 +1,41 @@
-from fastapi import HTTPException, status
 from src.infrastructure.sqlite.database import database
-from src.infrastructure.sqlite.repositories.category_repository import CategoryRepository
-from src.schemas.categories import Category, CategoryCreate
-
+from src.infrastructure.sqlite.repositories.categories import CategoryRepository
+from src.schemas.categories import CategoryCreate, CategoryResponse
+from src.exceptions import ConflictError, DatabaseException
+from datetime import datetime
 
 class CreateCategoryUseCase:
     def __init__(self):
         self._database = database
         self._repo = CategoryRepository()
 
-    async def execute(self, category_data: CategoryCreate) -> Category:
-        """Создать новую категорию"""
+    async def execute(self, category_data: CategoryCreate) -> CategoryResponse:
         try:
             with self._database.session() as session:
-                # Проверяем уникальность slug
-                existing_slug = self._repo.get_by_slug(session, category_data.slug)
-                if existing_slug:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"Категория со slug '{category_data.slug}' уже существует"
+                # Проверка на существующий slug через репозиторий (бизнес-логика)
+                if self._repo.slug_exists(session, category_data.slug):
+                    raise ConflictError(
+                        resource="Category",
+                        field="slug",
+                        value=category_data.slug
                     )
 
-                # Создаем категорию
-                new_category = self._repo.create(session, category_data)
+                category_dict = category_data.model_dump()
+                category_dict["created_at"] = datetime.now()
 
-                return Category.model_validate(new_category)
+                category = self._repo.create(session, category_dict)
+                session.commit()
 
-        except HTTPException:
+                return CategoryResponse.model_validate(category)
+
+        except ConflictError:
+            raise
+        except DatabaseException as e:
+            e.details["use_case"] = "CreateCategoryUseCase"
+            e.details["slug"] = category_data.slug
             raise
         except Exception as e:
-            print(f"Ошибка при создании категории: {e}")
-            raise
+            raise DatabaseException(
+                message=f"Странная ошибка при создании категории: {str(e)}",
+                details={"use_case": "CreateCategoryUseCase", "slug": category_data.slug}
+            )

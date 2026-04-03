@@ -1,59 +1,49 @@
-from fastapi import HTTPException, status
 from src.infrastructure.sqlite.database import database
-from src.infrastructure.sqlite.repositories.users_repository import UsersRepository
-from src.schemas.users import User, UserUpdate
+from src.infrastructure.sqlite.repositories.users import UserRepository
+from src.schemas.users import UserUpdate, UserResponse
+from src.exceptions import NotFoundException, ConflictError, DatabaseException
 
 
 class UpdateUserUseCase:
     def __init__(self):
         self._database = database
-        self._repo = UsersRepository()
+        self._repo = UserRepository()
 
-    async def execute(self, user_id: int, user_data: UserUpdate) -> User:
-        """Обновить данные пользователя"""
+    async def execute(self, user_id: int, update_data: UserUpdate
+    ) -> UserResponse:
         try:
             with self._database.session() as session:
-                # Проверяем, существует ли пользователь
-                existing_user = self._repo.get_by_id(session, user_id)
-                if not existing_user:
-                    raise HTTPException(
-                        status_code=status.HTTP_404_NOT_FOUND,
-                        detail=f"Пользователь с ID {user_id} не найден"
+                user = self._repo.get_by_id(session, user_id)
+                if not user:
+                    raise NotFoundException(
+                        resource="User",
+                        field="id",
+                        value=user_id
                     )
 
-                # Если обновляется username, проверяем уникальность
-                if user_data.username and user_data.username != existing_user.username:
-                    same_username = self._repo.get_by_username(session, user_data.username)
-                    if same_username:
-                        raise HTTPException(
-                            status_code=status.HTTP_400_BAD_REQUEST,
-                            detail=f"Пользователь с username '{user_data.username}' уже существует"
-                        )
+                if update_data.email:
+                    if self._repo.email_exists(session, update_data.email):
+                        existing = self._repo.get_by_email(session, update_data.email)
+                        if existing and existing.id != user_id:
+                            raise ConflictError(
+                                resource="User",
+                                field="email",
+                                value=update_data.email
+                            )
 
-                # Если обновляется email, проверяем уникальность
-                if user_data.email and user_data.email != existing_user.email:
-                    same_email = session.query(self._repo.model).filter(
-                        self._repo.model.email == user_data.email
-                    ).first()
-                    if same_email:
-                        raise HTTPException(
-                            status_code=status.HTTP_400_BAD_REQUEST,
-                            detail=f"Пользователь с email '{user_data.email}' уже существует"
-                        )
+                user = self._repo.update(session, user_id, update_data.model_dump(exclude_unset=True))
+                session.commit()
 
-                # Обновляем пользователя
-                updated_user = self._repo.update(session, user_id, user_data)
+                return UserResponse.model_validate(user)
 
-                if not updated_user:
-                    raise HTTPException(
-                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        detail="Не удалось обновить пользователя"
-                    )
-
-                return User.model_validate(updated_user)
-
-        except HTTPException:
+        except (NotFoundException, ConflictError):
+            raise
+        except DatabaseException as e:
+            e.details["use_case"] = "UpdateUserUseCase"
+            e.details["user_id"] = user_id
             raise
         except Exception as e:
-            print(f"Ошибка при обновлении пользователя: {e}")
-            raise
+            raise DatabaseException(
+                message=f"Неожиданная ошибка при обновлении пользователя: {str(e)}",
+                details={"use_case": "UpdateUserUseCase", "user_id": user_id}
+            )

@@ -1,34 +1,41 @@
-from fastapi import HTTPException, status
 from src.infrastructure.sqlite.database import database
-from src.infrastructure.sqlite.repositories.location_repository import LocationRepository
-from src.schemas.locations import Location, LocationCreate
-
+from src.infrastructure.sqlite.repositories.locations import LocationRepository
+from src.schemas.locations import LocationCreate, LocationResponse
+from src.exceptions import ConflictError, DatabaseException
+from datetime import datetime
 
 class CreateLocationUseCase:
     def __init__(self):
         self._database = database
         self._repo = LocationRepository()
 
-    async def execute(self, location_data: LocationCreate) -> Location:
-        """Создать новую локацию"""
+    async def execute(self, location_data: LocationCreate) -> LocationResponse:
         try:
             with self._database.session() as session:
-                # Можно добавить проверку на уникальность названия
-                existing = session.query(self._repo.model).filter(
-                    self._repo.model.name == location_data.name
-                ).first()
-
-                if existing:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"Локация с названием '{location_data.name}' уже существует"
+                # Проверка на дубликат имени
+                if self._repo.name_exists(session, location_data.name):
+                    raise ConflictError(
+                        resource="Location",
+                        field="name",
+                        value=location_data.name
                     )
 
-                new_location = self._repo.create(session, location_data)
-                return Location.model_validate(new_location)
+                location_dict = location_data.model_dump()
+                location_dict["created_at"] = datetime.now()
 
-        except HTTPException:
+                location = self._repo.create(session, location_dict)
+                session.commit()
+
+                return LocationResponse.model_validate(location)
+
+        except ConflictError:
+            raise
+        except DatabaseException as e:
+            e.details["use_case"] = "CreateLocationUseCase"
+            e.details["name"] = location_data.name
             raise
         except Exception as e:
-            print(f"Ошибка при создании локации: {e}")
-            raise
+            raise DatabaseException(
+                message=f"Странная ошибка при создании локации: {str(e)}",
+                details={"use_case": "CreateLocationUseCase", "name": location_data.name}
+            )

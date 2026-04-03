@@ -1,38 +1,36 @@
-from fastapi import HTTPException, status
 from src.infrastructure.sqlite.database import database
-from src.infrastructure.sqlite.repositories.users_repository import UsersRepository
+from src.infrastructure.sqlite.repositories.users import UserRepository
+from src.exceptions import NotFoundException, DatabaseException
 
 
 class DeleteUserUseCase:
     def __init__(self):
         self._database = database
-        self._repo = UsersRepository()
+        self._repo = UserRepository()
 
-    async def execute(self, user_id: int) -> dict:
-        """Удалить пользователя по ID"""
+    async def execute(self, user_id: int) -> bool:
         try:
             with self._database.session() as session:
-                # Проверяем, существует ли пользователь
                 user = self._repo.get_by_id(session, user_id)
                 if not user:
-                    raise HTTPException(
-                        status_code=status.HTTP_404_NOT_FOUND,
-                        detail=f"Пользователь с ID {user_id} не найден"
+                    raise NotFoundException(
+                        resource="User",
+                        field="id",
+                        value=user_id
                     )
 
-                # Удаляем пользователя
-                deleted = self._repo.delete(session, user_id)
+                success = self._repo.delete(session, user_id)
+                session.commit()
+                return success
 
-                if not deleted:
-                    raise HTTPException(
-                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        detail="Не удалось удалить пользователя"
-                    )
-
-                return {"message": f"Пользователь с ID {user_id} успешно удален"}
-
-        except HTTPException:
+        except NotFoundException:
+            raise
+        except DatabaseException as e:
+            e.details["use_case"] = "DeleteUserUseCase"
+            e.details["user_id"] = user_id
             raise
         except Exception as e:
-            print(f"Ошибка при удалении пользователя: {e}")
-            raise
+            raise DatabaseException(
+                message=f"Ошибка при удалении пользователя: {str(e)}",
+                details={"use_case": "DeleteUserUseCase", "user_id": user_id}
+            )

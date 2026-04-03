@@ -1,44 +1,52 @@
-from fastapi import HTTPException, status
 from src.infrastructure.sqlite.database import database
-from src.infrastructure.sqlite.repositories.users_repository import UsersRepository
-from src.schemas.users import User, UserCreate
+from src.infrastructure.sqlite.repositories.users import UserRepository
+from src.schemas.users import UserCreate, UserResponse
+from src.exceptions import ConflictError, DatabaseException
+from datetime import datetime
 
 
 class CreateUserUseCase:
     def __init__(self):
         self._database = database
-        self._repo = UsersRepository()
+        self._repo = UserRepository()
 
-    async def execute(self, user_data: UserCreate) -> User:
-        """Создать нового пользователя"""
+    async def execute(self, user_data: UserCreate) -> UserResponse:
         try:
             with self._database.session() as session:
-                # Проверяем, не занят ли username
-                existing_username = self._repo.get_by_username(session, user_data.username)
-                if existing_username:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"Пользователь с username '{user_data.username}' уже существует"
+                # Проверка на существующий username
+                if self._repo.username_exists(session, user_data.username):
+                    raise ConflictError(
+                        resource="User",
+                        field="username",
+                        value=user_data.username
                     )
 
-                # Проверяем email, если он указан
-                if user_data.email:
-                    existing_email = session.query(self._repo.model).filter(
-                        self._repo.model.email == user_data.email
-                    ).first()
-                    if existing_email:
-                        raise HTTPException(
-                            status_code=status.HTTP_400_BAD_REQUEST,
-                            detail=f"Пользователь с email '{user_data.email}' уже существует"
-                        )
+                # Проверка на существующий email
+                if self._repo.email_exists(session, user_data.email):
+                    raise ConflictError(
+                        resource="User",
+                        field="email",
+                        value=user_data.email
+                    )
 
-                # Создаем пользователя
-                new_user = self._repo.create(session, user_data)
+                # Создание пользователя
+                user_dict = user_data.model_dump()
+                user_dict["date_joined"] = datetime.now()
 
-                return User.model_validate(new_user)
+                user = self._repo.create(session, user_dict)
+                session.commit()
 
-        except HTTPException:
+                return UserResponse.model_validate(user)
+
+        except ConflictError:
+            raise
+        except DatabaseException as e:
+            # Обогащаем ошибку данными из use case
+            e.details["use_case"] = "CreateUserUseCase"
+            e.details["username"] = user_data.username
             raise
         except Exception as e:
-            print(f"Ошибка при создании пользователя: {e}")
-            raise
+            raise DatabaseException(
+                message=f"Неожиданная ошибка при создании пользователя: {str(e)}",
+                details={"use_case": "CreateUserUseCase", "username": user_data.username}
+            )

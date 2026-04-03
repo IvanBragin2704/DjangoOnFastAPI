@@ -1,43 +1,51 @@
-from fastapi import HTTPException, status
 from src.infrastructure.sqlite.database import database
-from src.infrastructure.sqlite.repositories.location_repository import LocationRepository
-from src.schemas.locations import Location, LocationUpdate
-
+from src.infrastructure.sqlite.repositories.locations import LocationRepository
+from src.schemas.locations import LocationUpdate, LocationResponse
+from src.exceptions import NotFoundException, ConflictError, DatabaseException
 
 class UpdateLocationUseCase:
     def __init__(self):
         self._database = database
         self._repo = LocationRepository()
 
-    async def execute(self, location_id: int, location_data: LocationUpdate) -> Location:
-        """Обновить локацию"""
+    async def execute(self, location_id: int, update_data: LocationUpdate) -> LocationResponse:
         try:
             with self._database.session() as session:
-                # Проверяем, существует ли локация
+                # Проверяем существование локации
                 existing_location = self._repo.get_by_id(session, location_id)
                 if not existing_location:
-                    raise HTTPException(
-                        status_code=status.HTTP_404_NOT_FOUND,
-                        detail=f"Локация с ID {location_id} не найдена"
+                    raise NotFoundException(
+                        resource="Location",
+                        field="id",
+                        value=location_id
                     )
 
-                # Если меняется название, проверяем уникальность
-                if location_data.name and location_data.name != existing_location.name:
-                    same_name = session.query(self._repo.model).filter(
-                        self._repo.model.name == location_data.name
-                    ).first()
-                    if same_name:
-                        raise HTTPException(
-                            status_code=status.HTTP_400_BAD_REQUEST,
-                            detail=f"Локация с названием '{location_data.name}' уже существует"
+                # Если меняется имя, проверяем на дубликат
+                if update_data.name is not None and update_data.name != existing_location.name:
+                    if self._repo.name_exists(session, update_data.name):
+                        raise ConflictError(
+                            resource="Location",
+                            field="name",
+                            value=update_data.name
                         )
 
-                # Обновляем локацию
-                updated_location = self._repo.update(session, location_id, location_data)
-                return Location.model_validate(updated_location)
+                location = self._repo.update(
+                    session,
+                    location_id,
+                    update_data.model_dump(exclude_unset=True)
+                )
+                session.commit()
 
-        except HTTPException:
+                return LocationResponse.model_validate(location)
+
+        except (NotFoundException, ConflictError):
+            raise
+        except DatabaseException as e:
+            e.details["use_case"] = "UpdateLocationUseCase"
+            e.details["location_id"] = location_id
             raise
         except Exception as e:
-            print(f"Ошибка при обновлении локации: {e}")
-            raise
+            raise DatabaseException(
+                message=f"Странная ошибка при обновлении локации: {str(e)}",
+                details={"use_case": "UpdateLocationUseCase", "location_id": location_id}
+            )

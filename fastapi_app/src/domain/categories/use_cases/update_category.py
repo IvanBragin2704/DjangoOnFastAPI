@@ -1,48 +1,51 @@
-from fastapi import HTTPException, status
 from src.infrastructure.sqlite.database import database
-from src.infrastructure.sqlite.repositories.category_repository import CategoryRepository
-from src.schemas.categories import Category, CategoryUpdate
-
+from src.infrastructure.sqlite.repositories.categories import CategoryRepository
+from src.schemas.categories import CategoryUpdate, CategoryResponse
+from src.exceptions import NotFoundException, ConflictError, DatabaseException
 
 class UpdateCategoryUseCase:
     def __init__(self):
         self._database = database
         self._repo = CategoryRepository()
 
-    async def execute(self, category_id: int, category_data: CategoryUpdate) -> Category:
-        """Обновить категорию"""
+    async def execute(self, category_id: int, update_data: CategoryUpdate) -> CategoryResponse:
         try:
             with self._database.session() as session:
-                # Проверяем, существует ли категория
+                # Проверяем существование категории
                 existing_category = self._repo.get_by_id(session, category_id)
                 if not existing_category:
-                    raise HTTPException(
-                        status_code=status.HTTP_404_NOT_FOUND,
-                        detail=f"Категория с ID {category_id} не найдена"
+                    raise NotFoundException(
+                        resource="Category",
+                        field="id",
+                        value=category_id
                     )
 
-                # Если обновляется slug, проверяем уникальность
-                if category_data.slug and category_data.slug != existing_category.slug:
-                    same_slug = self._repo.get_by_slug(session, category_data.slug)
-                    if same_slug:
-                        raise HTTPException(
-                            status_code=status.HTTP_400_BAD_REQUEST,
-                            detail=f"Категория со slug '{category_data.slug}' уже существует"
+                # Если меняется slug, проверяем уникальность
+                if update_data.slug is not None and update_data.slug != existing_category.slug:
+                    if self._repo.slug_exists(session, update_data.slug):
+                        raise ConflictError(
+                            resource="Category",
+                            field="slug",
+                            value=update_data.slug
                         )
 
-                # Обновляем категорию
-                updated_category = self._repo.update(session, category_id, category_data)
+                category = self._repo.update(
+                    session,
+                    category_id,
+                    update_data.model_dump(exclude_unset=True)
+                )
+                session.commit()
 
-                if not updated_category:
-                    raise HTTPException(
-                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        detail="Не удалось обновить категорию"
-                    )
+                return CategoryResponse.model_validate(category)
 
-                return Category.model_validate(updated_category)
-
-        except HTTPException:
+        except (NotFoundException, ConflictError):
+            raise
+        except DatabaseException as e:
+            e.details["use_case"] = "UpdateCategoryUseCase"
+            e.details["category_id"] = category_id
             raise
         except Exception as e:
-            print(f"Ошибка при обновлении категории: {e}")
-            raise
+            raise DatabaseException(
+                message=f"Странная ошибка при обновлении категории: {str(e)}",
+                details={"use_case": "UpdateCategoryUseCase", "category_id": category_id}
+            )

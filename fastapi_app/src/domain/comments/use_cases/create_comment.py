@@ -1,44 +1,60 @@
-from fastapi import HTTPException, status
 from src.infrastructure.sqlite.database import database
-from src.infrastructure.sqlite.repositories.comment_repository import CommentRepository
-from src.infrastructure.sqlite.repositories.users_repository import UsersRepository
-from src.infrastructure.sqlite.repositories.post_repository import PostRepository
-from src.schemas.comments import Comment, CommentCreate
-
+from src.infrastructure.sqlite.repositories.comments import CommentRepository
+from src.infrastructure.sqlite.repositories.users import UserRepository
+from src.infrastructure.sqlite.repositories.posts import PostRepository
+from src.schemas.comments import CommentCreate, CommentResponse
+from src.exceptions import NotFoundException, DatabaseException
+from datetime import datetime
 
 class CreateCommentUseCase:
     def __init__(self):
         self._database = database
         self._repo = CommentRepository()
-        self._user_repo = UsersRepository()
+        self._user_repo = UserRepository()
         self._post_repo = PostRepository()
 
-    async def execute(self, comment_data: CommentCreate) -> Comment:
-        """Создать новый комментарий"""
+    async def execute(self, comment_data: CommentCreate) -> CommentResponse:
         try:
             with self._database.session() as session:
                 # Проверяем существование автора
                 author = self._user_repo.get_by_id(session, comment_data.author_id)
                 if not author:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"Автор с ID {comment_data.author_id} не найден"
+                    raise NotFoundException(
+                        resource="User",
+                        field="id",
+                        value=comment_data.author_id
                     )
 
                 # Проверяем существование поста
                 post = self._post_repo.get_by_id(session, comment_data.post_id)
                 if not post:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"Пост с ID {comment_data.post_id} не найден"
+                    raise NotFoundException(
+                        resource="Post",
+                        field="id",
+                        value=comment_data.post_id
                     )
 
-                # Создаем комментарий
-                new_comment = self._repo.create(session, comment_data)
-                return Comment.model_validate(new_comment)
+                comment_dict = comment_data.model_dump()
+                comment_dict["created_at"] = datetime.now()
 
-        except HTTPException:
+                new_comment = self._repo.create(session, comment_dict)
+                session.commit()
+
+                return CommentResponse.model_validate(new_comment)
+
+        except NotFoundException:
+            raise
+        except DatabaseException as e:
+            e.details["use_case"] = "CreateCommentUseCase"
+            e.details["author_id"] = comment_data.author_id
+            e.details["post_id"] = comment_data.post_id
             raise
         except Exception as e:
-            print(f"Ошибка при создании комментария: {e}")
-            raise
+            raise DatabaseException(
+                message=f"Странная ошибка при создании комментария: {str(e)}",
+                details={
+                    "use_case": "CreateCommentUseCase",
+                    "author_id": comment_data.author_id,
+                    "post_id": comment_data.post_id
+                }
+            )
