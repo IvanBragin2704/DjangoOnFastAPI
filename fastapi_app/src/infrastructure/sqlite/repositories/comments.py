@@ -115,3 +115,11 @@ class CommentRepository:
                 message=f"Ошибка БД при удалении комментария: {str(e)}",
                 details={"table": "blog_comment", "comment_id": comment_id}
             )
+
+    def delete_by_post_id(self, session, post_id: int) -> int:
+        """Удаляет все комментарии поста. Возвращает количество удаленных комментариев."""
+        comments = session.query(Comment).filter(Comment.post_id == post_id).all()
+        count = len(comments)
+        for comment in comments:
+            session.delete(comment)
+        return count

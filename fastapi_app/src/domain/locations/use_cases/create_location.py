@@ -1,7 +1,7 @@
 from src.infrastructure.sqlite.database import database
 from src.infrastructure.sqlite.repositories.locations import LocationRepository
 from src.schemas.locations import LocationCreate, LocationResponse
-from src.exceptions import ConflictError, DatabaseException
+from src.exceptions import ConflictError, DatabaseException, ForbiddenError
 from datetime import datetime
 
 class CreateLocationUseCase:
@@ -9,8 +9,14 @@ class CreateLocationUseCase:
         self._database = database
         self._repo = LocationRepository()
 
-    async def execute(self, location_data: LocationCreate) -> LocationResponse:
+    async def execute(self, location_data: LocationCreate,  current_user: dict) -> LocationResponse:
         try:
+            if not current_user.get("is_superuser"):
+                raise ForbiddenError(
+                    message="Только суперпользователи могут создавать категории",
+                    required_role="superuser",
+                    user_role="user" if not current_user.get("is_superuser") else "superuser"
+                )
             with self._database.session() as session:
                 # Проверка на дубликат имени
                 if self._repo.name_exists(session, location_data.name):
@@ -28,7 +34,7 @@ class CreateLocationUseCase:
 
                 return LocationResponse.model_validate(location)
 
-        except ConflictError:
+        except (ConflictError, ForbiddenError):
             raise
         except DatabaseException as e:
             e.details["use_case"] = "CreateLocationUseCase"

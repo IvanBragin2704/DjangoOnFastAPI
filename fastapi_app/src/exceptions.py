@@ -127,3 +127,26 @@ class UnprocessableError(DomainException):
         if value:
             details["value"] = value
         super().__init__(message=message, code="unprocessable", details=details)
+
+
+class ForbiddenError(DomainException):
+    """Доступ запрещен (403) - недостаточно прав"""
+
+    def __init__(
+            self,
+            message: str = "Доступ запрещен",
+            required_role: Optional[str] = None,
+            user_role: Optional[str] = None,
+            details: Optional[dict] = None
+    ):
+        error_details = details or {}
+        if required_role:
+            error_details["required_role"] = required_role
+        if user_role:
+            error_details["user_role"] = user_role
+
+        super().__init__(
+            message=message,
+            code="forbidden",
+            details=error_details
+        )

@@ -1,15 +1,21 @@
 from src.infrastructure.sqlite.database import database
 from src.infrastructure.sqlite.repositories.locations import LocationRepository
 from src.schemas.locations import LocationUpdate, LocationResponse
-from src.exceptions import NotFoundException, ConflictError, DatabaseException
+from src.exceptions import NotFoundException, ConflictError, DatabaseException, ForbiddenError
 
 class UpdateLocationUseCase:
     def __init__(self):
         self._database = database
         self._repo = LocationRepository()
 
-    async def execute(self, location_id: int, update_data: LocationUpdate) -> LocationResponse:
+    async def execute(self, location_id: int, update_data: LocationUpdate,  current_user: dict) -> LocationResponse:
         try:
+            if not current_user.get("is_superuser"):
+                raise ForbiddenError(
+                    message="Только суперпользователи могут создавать категории",
+                    required_role="superuser",
+                    user_role="user" if not current_user.get("is_superuser") else "superuser"
+                )
             with self._database.session() as session:
                 # Проверяем существование локации
                 existing_location = self._repo.get_by_id(session, location_id)
@@ -38,7 +44,7 @@ class UpdateLocationUseCase:
 
                 return LocationResponse.model_validate(location)
 
-        except (NotFoundException, ConflictError):
+        except (NotFoundException, ConflictError, ForbiddenError):
             raise
         except DatabaseException as e:
             e.details["use_case"] = "UpdateLocationUseCase"

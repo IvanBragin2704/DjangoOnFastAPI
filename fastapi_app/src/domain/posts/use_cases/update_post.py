@@ -3,7 +3,8 @@ from src.infrastructure.sqlite.repositories.posts import PostRepository
 from src.infrastructure.sqlite.repositories.categories import CategoryRepository
 from src.infrastructure.sqlite.repositories.locations import LocationRepository
 from src.schemas.posts import PostResponse, PostUpdate
-from src.exceptions import NotFoundException, DatabaseException
+from src.exceptions import NotFoundException, DatabaseException, ForbiddenError
+
 
 class UpdatePostUseCase:
     def __init__(self):
@@ -12,7 +13,7 @@ class UpdatePostUseCase:
         self._category_repo = CategoryRepository()
         self._location_repo = LocationRepository()
 
-    async def execute(self, post_id: int, update_data: PostUpdate) -> PostResponse:
+    async def execute(self, post_id: int, update_data: PostUpdate, current_user: dict) -> PostResponse:
         try:
             with self._database.session() as session:
                 # Проверяем, существует ли пост
@@ -22,6 +23,15 @@ class UpdatePostUseCase:
                         resource="Post",
                         field="id",
                         value=post_id
+                    )
+
+                # Проверка: только автор поста может редактировать
+                if existing_post.author_id != current_user.get("id"):
+                    raise ForbiddenError(
+                        message="Только автор поста может его редактировать",
+                        required_role="post_author",
+                        user_role="other_user",
+                        details={"post_author_id": existing_post.author_id, "current_user_id": current_user.get("id")}
                     )
 
                 # Если меняется категория, проверяем её существование
@@ -56,11 +66,12 @@ class UpdatePostUseCase:
 
                 return PostResponse.model_validate(updated_post)
 
-        except NotFoundException:
+        except (NotFoundException, ForbiddenError):
             raise
         except DatabaseException as e:
             e.details["use_case"] = "UpdatePostUseCase"
             e.details["post_id"] = post_id
+            e.details["user_id"] = current_user.get("id")
             raise
         except Exception as e:
             raise DatabaseException(

@@ -105,8 +105,6 @@ class UserListResponse(BaseModel):
 # Дополнительные схемы для фильтрации
 class UserGetByEmailRequest(BaseModel):
     email: EmailStr
-
-
 class UserGetActiveRequest(BaseModel):
     is_active: bool = True
     skip: int = Field(default=0, ge=0)

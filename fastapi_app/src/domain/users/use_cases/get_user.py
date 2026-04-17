@@ -2,7 +2,7 @@ from src.infrastructure.sqlite.database import database
 from src.infrastructure.sqlite.repositories.users import UserRepository
 from src.schemas.users import UserResponse, UserListResponse
 from src.exceptions import NotFoundException, DatabaseException
-
+from src.infrastructure.sqlite.models.users import User
 
 class GetUserUseCase:
     def __init__(self):

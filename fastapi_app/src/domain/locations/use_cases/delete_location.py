@@ -1,14 +1,20 @@
 from src.infrastructure.sqlite.database import database
 from src.infrastructure.sqlite.repositories.locations import LocationRepository
-from src.exceptions import NotFoundException, DatabaseException
+from src.exceptions import NotFoundException, DatabaseException, ForbiddenError
 
 class DeleteLocationUseCase:
     def __init__(self):
         self._database = database
         self._repo = LocationRepository()
 
-    async def execute(self, location_id: int) -> bool:
+    async def execute(self, location_id: int,  current_user: dict) -> bool:
         try:
+            if not current_user.get("is_superuser"):
+                raise ForbiddenError(
+                    message="Только суперпользователи могут создавать категории",
+                    required_role="superuser",
+                    user_role="user" if not current_user.get("is_superuser") else "superuser"
+                )
             with self._database.session() as session:
                 location = self._repo.get_by_id(session, location_id)
                 if not location:
@@ -22,7 +28,7 @@ class DeleteLocationUseCase:
                 session.commit()
                 return success
 
-        except NotFoundException:
+        except (NotFoundException, ForbiddenError):
             raise
         except DatabaseException as e:
             e.details["use_case"] = "DeleteLocationUseCase"

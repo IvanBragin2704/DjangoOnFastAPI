@@ -4,8 +4,9 @@ from src.infrastructure.sqlite.repositories.users import UserRepository
 from src.infrastructure.sqlite.repositories.categories import CategoryRepository
 from src.infrastructure.sqlite.repositories.locations import LocationRepository
 from src.schemas.posts import PostResponse, PostCreate
-from src.exceptions import NotFoundException, DatabaseException
+from src.exceptions import NotFoundException, DatabaseException, ForbiddenError
 from datetime import datetime
+
 
 class CreatePostUseCase:
     def __init__(self):
@@ -15,18 +16,17 @@ class CreatePostUseCase:
         self._category_repo = CategoryRepository()
         self._location_repo = LocationRepository()
 
-    async def execute(self, post_data: PostCreate) -> PostResponse:
+    async def execute(self, post_data: PostCreate, current_user: dict) -> PostResponse:
         try:
-            with self._database.session() as session:
-                # Проверяем существование автора
-                author = self._user_repo.get_by_id(session, post_data.author_id)
-                if not author:
-                    raise NotFoundException(
-                        resource="User",
-                        field="id",
-                        value=post_data.author_id
-                    )
+            # Проверка: только авторизованные пользователи могут создавать посты
+            if not current_user:
+                raise ForbiddenError(
+                    message="Только авторизованные пользователи могут создавать посты",
+                    required_role="authenticated",
+                    user_role="anonymous"
+                )
 
+            with self._database.session() as session:
                 # Проверяем существование категории (если указана)
                 if post_data.category_id:
                     category = self._category_repo.get_by_id(session, post_data.category_id)
@@ -47,8 +47,9 @@ class CreatePostUseCase:
                             value=post_data.location_id
                         )
 
-                # Создаем пост
+                # Создаем пост - author_id берем из токена
                 post_dict = post_data.model_dump()
+                post_dict["author_id"] = current_user.get("id")  # <-- Берем из токена
                 post_dict["created_at"] = datetime.now()
 
                 new_post = self._repo.create(session, post_dict)
@@ -56,11 +57,11 @@ class CreatePostUseCase:
 
                 return PostResponse.model_validate(new_post)
 
-        except NotFoundException:
+        except (NotFoundException, ForbiddenError):
             raise
         except DatabaseException as e:
             e.details["use_case"] = "CreatePostUseCase"
-            e.details["author_id"] = post_data.author_id
+            e.details["user_id"] = current_user.get("id")
             if post_data.category_id:
                 e.details["category_id"] = post_data.category_id
             if post_data.location_id:
@@ -71,6 +72,6 @@ class CreatePostUseCase:
                 message=f"Странная ошибка при создании поста: {str(e)}",
                 details={
                     "use_case": "CreatePostUseCase",
-                    "author_id": post_data.author_id
+                    "user_id": current_user.get("id")
                 }
             )
